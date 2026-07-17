@@ -1,0 +1,47 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "Partner B - Financial Services",
+    "identifier": "did:web:partnerB.com"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:partnerB.com:finance:payment-processor",
+      "displayName": "Payment Processing Agent (A2A)",
+      "type": "application/a2a-agent-card+json",
+      "url": "https://partnerB.com/agents/payment-processor-card.json",
+      "description": "Processes travel payments, handles multi-currency transactions and refunds.",
+      "capabilities": ["process_payment", "issue_refund"],
+      "tags": ["finance", "payments", "transactions"],
+      "representativeQueries": [
+        "process a payment for a flight booking",
+        "handle a multi-currency transaction",
+        "issue a refund for a cancelled hotel"
+      ],
+      "trustManifest": {
+        "identity": "https://partnerB.com",
+        "identityType": "https",
+        "attestations": []
+      }
+    },
+    {
+      "identifier": "urn:air:partnerB.com:finance:currency-exchange",
+      "displayName": "Currency Exchange Agent (A2A)",
+      "type": "application/a2a-agent-card+json",
+      "url": "https://partnerB.com/agents/currency-exchange-card.json",
+      "description": "Converts between currencies with live rates, supports 150+ currencies.",
+      "capabilities": ["convert_currency", "get_exchange_rate"],
+      "tags": ["finance", "currency", "exchange", "forex"],
+      "representativeQueries": [
+        "convert USD to JPY",
+        "what is the exchange rate for euros",
+        "currency converter agent"
+      ],
+      "trustManifest": {
+        "identity": "https://partnerB.com",
+        "identityType": "https",
+        "attestations": []
+      }
+    }
+  ]
+}

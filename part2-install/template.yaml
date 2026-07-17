@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: ARD Registry - catalog on S3 + CloudFront, search service on Lambda + HTTP API
+
+Parameters:
+  CatalogBucketName:
+    Type: String
+    Description: S3 bucket name (must already exist with Lambda zip and catalogs uploaded)
+
+Resources:
+  # --- S3 bucket policy for CloudFront access ---
+  CatalogBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CatalogBucketName
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontRead
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${CatalogBucketName}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CatalogDistribution}"
+
+  # --- CloudFront for serving the catalog publicly ---
+  CatalogOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CatalogDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultCacheBehavior:
+          TargetOriginId: catalog-s3
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          AllowedMethods: [GET, HEAD]
+        Origins:
+          - Id: catalog-s3
+            DomainName: !Sub "${CatalogBucketName}.s3.${AWS::Region}.amazonaws.com"
+            OriginAccessControlId: !Ref CatalogOriginAccessControl
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+
+  # --- Lambda execution role ---
+  RegistryFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ReadCatalogBucket
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub "arn:aws:s3:::${CatalogBucketName}/*"
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub "arn:aws:s3:::${CatalogBucketName}"
+                Condition:
+                  StringLike:
+                    s3:prefix: "catalogs/*"
+
+  # --- Lambda function ---
+  RegistryFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${AWS::StackName}-search"
+      Runtime: python3.13
+      Handler: handler.lambda_handler
+      Code:
+        S3Bucket: !Ref CatalogBucketName
+        S3Key: lambda/handler.zip
+      MemorySize: 256
+      Timeout: 30
+      Role: !GetAtt RegistryFunctionRole.Arn
+      Environment:
+        Variables:
+          CATALOG_BUCKET: !Ref CatalogBucketName
+          CATALOGS_PREFIX: catalogs/
+
+  # --- API Gateway HTTP API ---
+  RegistryApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowMethods:
+          - POST
+          - OPTIONS
+        AllowHeaders:
+          - Content-Type
+
+  RegistryApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref RegistryApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt RegistryFunction.Arn
+      PayloadFormatVersion: "2.0"
+
+  RegistryApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RegistryApi
+      RouteKey: "POST /search"
+      Target: !Sub "integrations/${RegistryApiIntegration}"
+
+  RegistryApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref RegistryApi
+      StageName: "$default"
+      AutoDeploy: true
+
+  RegistryFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RegistryFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${RegistryApi}/*"
+
+Outputs:
+  RegistryUrl:
+    Description: ARD Registry search endpoint (POST /search)
+    Value: !Sub "https://${RegistryApi}.execute-api.${AWS::Region}.amazonaws.com/search"
+
+  CatalogUrl:
+    Description: Public URL for the ARD catalog
+    Value: !Sub "https://${CatalogDistribution.DomainName}/.well-known/ai-catalog.json"

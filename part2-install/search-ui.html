@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARD Registry Search</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f5; padding: 2rem; color: #333; }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin-bottom: 0.5rem; }
+    .subtitle { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
+    .search-box { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+    .endpoint-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .endpoint-row input { flex: 1; padding: 0.5rem 0.75rem; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; font-family: monospace; }
+    .query-row { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+    .query-row input { flex: 1; padding: 0.75rem; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+    .query-row input:focus { outline: none; border-color: #0066cc; }
+    .filters { display: flex; gap: 1.5rem; align-items: center; margin-bottom: 1rem; }
+    .filters label { font-size: 0.85rem; color: #555; cursor: pointer; }
+    .filters input[type="checkbox"] { margin-right: 0.3rem; }
+    button { padding: 0.75rem 1.5rem; background: #0066cc; color: #fff; border: none; border-radius: 6px; font-size: 0.95rem; cursor: pointer; }
+    button:hover { background: #0052a3; }
+    button:disabled { background: #999; cursor: not-allowed; }
+    .results { background: #fff; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .results h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .result-card { border: 1px solid #eee; border-radius: 6px; padding: 1rem; margin-bottom: 0.75rem; transition: border-color 0.2s; }
+    .result-card:hover { border-color: #0066cc; }
+    .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .result-name { font-weight: 600; font-size: 0.95rem; }
+    .result-score { background: #e8f4e8; color: #2d7a2d; padding: 0.2rem 0.6rem; border-radius: 12px; font-size: 0.8rem; font-weight: 600; }
+    .result-score.low { background: #f4e8e8; color: #7a2d2d; }
+    .result-score.mid { background: #f4f0e8; color: #7a5c2d; }
+    .result-meta { font-size: 0.8rem; color: #888; margin-top: 0.4rem; }
+    .result-meta span { margin-right: 1rem; }
+    .result-id { font-family: monospace; font-size: 0.75rem; color: #999; margin-top: 0.3rem; word-break: break-all; }
+    .empty { text-align: center; color: #999; padding: 2rem; }
+    .error { background: #fee; border: 1px solid #fcc; color: #c00; padding: 1rem; border-radius: 6px; }
+    .latency { font-size: 0.8rem; color: #888; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ARD Registry Search</h1>
+    <p class="subtitle">Search for agents across federated partner catalogs</p>
+
+    <div class="search-box">
+      <div class="endpoint-row">
+        <input type="text" id="endpoint" value="https://w6jdnh5xal.execute-api.us-west-2.amazonaws.com/search" placeholder="Registry endpoint URL">
+      </div>
+      <div class="query-row">
+        <input type="text" id="query" placeholder="e.g. flight hotel booking, currency exchange, process payment..." autofocus>
+        <button id="searchBtn" onclick="doSearch()">Search</button>
+      </div>
+      <div class="filters">
+        <label><input type="checkbox" id="filterA2A" checked> A2A agents only</label>
+        <label><input type="checkbox" id="filterTravel"> Tag: travel</label>
+        <label><input type="checkbox" id="filterFinance"> Tag: finance</label>
+      </div>
+    </div>
+
+    <div class="results" id="results">
+      <div class="empty">Enter a query to search for agents</div>
+    </div>
+  </div>
+
+  <script>
+    const queryInput = document.getElementById('query');
+    queryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+    async function doSearch() {
+      const endpoint = document.getElementById('endpoint').value.trim();
+      const queryText = document.getElementById('query').value.trim();
+      const filterA2A = document.getElementById('filterA2A').checked;
+      const filterTravel = document.getElementById('filterTravel').checked;
+      const filterFinance = document.getElementById('filterFinance').checked;
+      const resultsDiv = document.getElementById('results');
+      const btn = document.getElementById('searchBtn');
+
+      if (!queryText) { resultsDiv.innerHTML = '<div class="empty">Enter a query to search for agents</div>'; return; }
+
+      const body = { query: { text: queryText, filter: {} }, pageSize: 10 };
+      if (filterA2A) body.query.filter.type = ["application/a2a-agent-card+json"];
+
+      const tags = [];
+      if (filterTravel) tags.push("travel");
+      if (filterFinance) tags.push("finance");
+      if (tags.length) body.query.filter.tags = tags;
+
+      btn.disabled = true;
+      btn.textContent = "Searching...";
+      resultsDiv.innerHTML = '<div class="empty">Searching...</div>';
+
+      const start = performance.now();
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const elapsed = Math.round(performance.now() - start);
+
+        if (!resp.ok) {
+          const err = await resp.text();
+          resultsDiv.innerHTML = `<div class="error">HTTP ${resp.status}: ${err}</div>`;
+          return;
+        }
+
+        const data = await resp.json();
+        renderResults(data.results || [], elapsed);
+      } catch (e) {
+        resultsDiv.innerHTML = `<div class="error">Network error: ${e.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Search";
+      }
+    }
+
+    function renderResults(results, elapsed) {
+      const div = document.getElementById('results');
+      if (!results.length) {
+        div.innerHTML = `<div class="empty">No results found</div><div class="latency">${elapsed}ms</div>`;
+        return;
+      }
+
+      let html = `<h2>Results (${results.length})</h2><div class="latency">Response time: ${elapsed}ms</div><br>`;
+      for (const r of results) {
+        const scoreClass = r.score >= 40 ? '' : r.score >= 20 ? 'mid' : 'low';
+        const source = r.source || 'unknown';
+        const partner = source.includes('partnerA') ? 'Partner A' : source.includes('partnerB') ? 'Partner B' : source;
+        html += `
+          <div class="result-card">
+            <div class="result-header">
+              <span class="result-name">${esc(r.displayName)}</span>
+              <span class="result-score ${scoreClass}">Score: ${r.score}</span>
+            </div>
+            <div class="result-meta">
+              <span>Source: <strong>${esc(partner)}</strong></span>
+              <span>Type: ${esc(r.type || 'n/a')}</span>
+            </div>
+            <div class="result-id">${esc(r.identifier)}</div>
+          </div>`;
+      }
+      div.innerHTML = html;
+    }
+
+    function esc(str) { const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
+  </script>
+</body>
+</html>

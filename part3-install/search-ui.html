@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ARD Registry - Ranking Comparison</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      padding: 2rem;
+      color: #333;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+      color: #666;
+      margin-bottom: 1.5rem;
+      font-size: 0.9rem;
+    }
+
+    .search-box {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      margin-bottom: 1.5rem;
+    }
+
+    .endpoint-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .endpoint-row input {
+      flex: 1;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      font-family: monospace;
+    }
+
+    .query-row {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .query-row input {
+      flex: 1;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 1rem;
+    }
+
+    .query-row input:focus {
+      outline: none;
+      border-color: #0066cc;
+    }
+
+    button {
+      padding: 0.75rem 1.5rem;
+      background: #0066cc;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #0052a3;
+    }
+
+    button:disabled {
+      background: #999;
+      cursor: not-allowed;
+    }
+
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .results-panel {
+      background: #fff;
+      border-radius: 8px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .results-panel h2 {
+      font-size: 1rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 2px solid;
+    }
+
+    .panel-keyword h2 {
+      border-color: #e67e22;
+      color: #e67e22;
+    }
+
+    .panel-vector h2 {
+      border-color: #27ae60;
+      color: #27ae60;
+    }
+
+    .result-card {
+      border: 1px solid #eee;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .result-card:hover {
+      border-color: #ccc;
+    }
+
+    .result-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.3rem;
+    }
+
+    .result-name {
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    .result-score {
+      padding: 0.15rem 0.5rem;
+      border-radius: 12px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .score-keyword {
+      background: #fef3e8;
+      color: #e67e22;
+    }
+
+    .score-vector {
+      background: #e8f8f0;
+      color: #27ae60;
+    }
+
+    .result-meta {
+      font-size: 0.75rem;
+      color: #888;
+    }
+
+    .result-id {
+      font-family: monospace;
+      font-size: 0.7rem;
+      color: #aaa;
+      margin-top: 0.2rem;
+      word-break: break-all;
+    }
+
+    .empty {
+      text-align: center;
+      color: #999;
+      padding: 2rem;
+      font-size: 0.9rem;
+    }
+
+    .error {
+      background: #fee;
+      border: 1px solid #fcc;
+      color: #c00;
+      padding: 1rem;
+      border-radius: 6px;
+    }
+
+    .latency {
+      font-size: 0.75rem;
+      color: #888;
+      margin-top: 0.5rem;
+    }
+
+    .legend {
+      font-size: 0.8rem;
+      color: #666;
+      margin-bottom: 1rem;
+      background: #fafafa;
+      padding: 0.75rem;
+      border-radius: 6px;
+    }
+
+    .legend strong {
+      color: #333;
+    }
+
+    @media (max-width: 768px) {
+      .results-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>ARD Registry - Scoring Comparison</h1>
+    <p class="subtitle">Compare keyword overlap (Fix 1+2) vs vector embeddings (Fix 4) side by side</p>
+
+    <div class="legend">
+      <strong>Left:</strong> Keyword overlap with stop word removal + stemming. Scores based on token matching.<br>
+      <strong>Right:</strong> Vector embeddings via Titan Embeddings v2. Scores based on semantic similarity.
+    </div>
+
+    <div class="search-box">
+      <div class="endpoint-row">
+        <input type="text" id="endpoint" value="https://w6jdnh5xal.execute-api.us-west-2.amazonaws.com/search"
+          placeholder="Registry endpoint URL">
+      </div>
+      <div class="query-row">
+        <input type="text" id="query"
+          placeholder="Try: &quot;I need to pay for my trip&quot; or &quot;book flight from SFO to Tokyo&quot;"
+          autofocus>
+        <button id="searchBtn" onclick="doSearch()">Search</button>
+      </div>
+    </div>
+
+    <div class="results-grid">
+      <div class="results-panel panel-keyword" id="keywordResults">
+        <h2>Keyword Overlap (Fix 1+2)</h2>
+        <div class="empty">Enter a query to compare scoring</div>
+      </div>
+      <div class="results-panel panel-vector" id="vectorResults">
+        <h2>Vector Embeddings (Fix 4)</h2>
+        <div class="empty">Enter a query to compare scoring</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const queryInput = document.getElementById('query');
+    queryInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSearch(); });
+
+    async function doSearch() {
+      const endpoint = document.getElementById('endpoint').value.trim();
+      const queryText = document.getElementById('query').value.trim();
+      const keywordDiv = document.getElementById('keywordResults');
+      const vectorDiv = document.getElementById('vectorResults');
+      const btn = document.getElementById('searchBtn');
+
+      if (!queryText) return;
+
+      btn.disabled = true;
+      btn.textContent = "Searching...";
+      keywordDiv.innerHTML = '<h2>Keyword Overlap (Fix 1+2)</h2><div class="empty">Searching...</div>';
+      vectorDiv.innerHTML = '<h2>Vector Embeddings (Fix 4)</h2><div class="empty">Searching...</div>';
+
+      const body = { query: { text: queryText }, pageSize: 5 };
+      const start = performance.now();
+
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const elapsed = Math.round(performance.now() - start);
+
+        if (!resp.ok) {
+          const err = await resp.text();
+          keywordDiv.innerHTML = `<h2>Keyword Overlap (Fix 1+2)</h2><div class="error">HTTP ${resp.status}: ${err}</div>`;
+          vectorDiv.innerHTML = `<h2>Vector Embeddings (Fix 4)</h2><div class="error">HTTP ${resp.status}: ${err}</div>`;
+          return;
+        }
+
+        const data = await resp.json();
+        const results = data.results || [];
+
+        // Sort by keyword score for left panel
+        const byKeyword = [...results].sort((a, b) => (b.keywordScore || 0) - (a.keywordScore || 0));
+        // Sort by vector score for right panel
+        const byVector = [...results].sort((a, b) => (b.vectorScore || 0) - (a.vectorScore || 0));
+
+        renderPanel(keywordDiv, "Keyword Overlap (Fix 1+2)", byKeyword, "keywordScore", "score-keyword", elapsed);
+        renderPanel(vectorDiv, "Vector Embeddings (Fix 4)", byVector, "vectorScore", "score-vector", elapsed);
+      } catch (e) {
+        keywordDiv.innerHTML = `<h2>Keyword Overlap (Fix 1+2)</h2><div class="error">Error: ${e.message}</div>`;
+        vectorDiv.innerHTML = `<h2>Vector Embeddings (Fix 4)</h2><div class="error">Error: ${e.message}</div>`;
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Search";
+      }
+    }
+
+    function renderPanel(div, title, results, scoreField, scoreClass, elapsed) {
+      if (!results.length) {
+        div.innerHTML = `<h2>${title}</h2><div class="empty">No results</div>`;
+        return;
+      }
+
+      let html = `<h2>${title}</h2><div class="latency">Response: ${elapsed}ms</div>`;
+      for (const r of results) {
+        const score = r[scoreField] || 0;
+        const source = r.source || 'unknown';
+        const partner = source.includes('partnerA') ? 'Partner A' : source.includes('partnerB') ? 'Partner B' : source;
+        html += `
+          <div class="result-card">
+            <div class="result-header">
+              <span class="result-name">${esc(r.displayName)}</span>
+              <span class="result-score ${scoreClass}">${score}</span>
+            </div>
+            <div class="result-meta">Source: ${esc(partner)}</div>
+            <div class="result-id">${esc(r.identifier)}</div>
+          </div>`;
+      }
+      div.innerHTML = html;
+    }
+
+    function esc(str) { const d = document.createElement('div'); d.textContent = str || ''; return d.innerHTML; }
+  </script>
+</body>
+
+</html>
